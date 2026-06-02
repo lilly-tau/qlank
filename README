@@ -22,8 +22,13 @@ values are uppercase.
 
 Example:
 
+	@FUNC
+	OUTPUTS	WORD
+		RET U2A
+	DONE
+
 	@MAIN
 	OUTPUTS	WORD
 	DO
-		RET U2A
+		RET @FUNC
 	DONE

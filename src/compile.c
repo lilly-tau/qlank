@@ -71,33 +71,57 @@ struct context *ctx)
 	NUMCONST constant;
 	BOOLEAN isword, negative;
 	TYPE expr_type;
+	char *tmp;
+	size_t i;
 
-	p_assert(is_number(ctx->lexer->token), "Invalid expression on line"
-		" %u.", ctx->lexer->line);
+	if (is_number(ctx->lexer->token)) {
+		constant = as_number(ctx->lexer->token, &isword, &negative);
+	
+		if (constant < 0x100 && isword)
+			expr_type = T_BYTE;
+		else if (constant < 0x100 && negative)
+			expr_type = T_CHAR;
+		else if (constant < 0x80000000 && isword)
+			expr_type = T_WORD;
+		else if (constant < 0x80000000)
+			expr_type = T_INT;
+		else if (negative)
+			expr_type = T_INT;
+		else
+			expr_type = T_WORD;
+	
+		strext(ret, "\t\t(i32.const 0x");
+		strext_num(ret, constant);
+		strext(ret, ")\n");
+	
+		p_assert(type_associable(expr_type, return_type),
+			"Expected type %s but got type %s in expression on"
+			" line %u.", TYPE_STRINGS[return_type],
+			TYPE_STRINGS[expr_type], ctx->lexer->line);
+	} else if (is_identifier(ctx->lexer->token)) {
+		tmp = malloc(strlen(ctx->lexer->token) + 1);
 
-	constant = as_number(ctx->lexer->token, &isword, &negative);
+		for (i = 0; ctx->lexer->token[i]; i++)
+			tmp[i] = tolower(ctx->lexer->token[i]);
+		tmp[i] = '\0';
 
-	if (constant < 0x100 && isword)
-		expr_type = T_BYTE;
-	else if (constant < 0x100 && negative)
-		expr_type = T_CHAR;
-	else if (constant < 0x80000000 && isword)
-		expr_type = T_WORD;
-	else if (constant < 0x80000000)
-		expr_type = T_INT;
-	else if (negative)
-		expr_type = T_INT;
-	else
-		expr_type = T_WORD;
+		for (i = 0; i < ctx->functions.length; i++)
+			if (!strcmp(tmp, ctx->functions.contents[i].name))
+				break;
 
-	strext(ret, "\t\t(i32.const 0x");
-	strext_num(ret, constant);
-	strext(ret, ")\n");
+		p_assert(i != ctx->functions.length, "Unknown function %s in"
+			" expression on line %u.", ctx->lexer->token,
+			ctx->lexer->line);
 
-	p_assert(type_associable(expr_type, return_type), "Expected type %s"
-		" but got type %s in expression on line %u.",
-		TYPE_STRINGS[return_type], TYPE_STRINGS[expr_type],
-		ctx->lexer->line);
+		expr_type = ctx->functions.contents[i].return_type;
+		strext(ret, "\t\t(call $");
+		strext(ret, tmp + 1);
+		strext(ret, ")\n");
+
+		free(tmp);
+	} else
+		p_assert(FALSE, "Invalid expression on line %u.",
+			ctx->lexer->line);
 
 	return TRUE;
 }

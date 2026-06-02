@@ -29,9 +29,9 @@ main(void)
 
 	printf("(module\n");
 	for (i = 0; i < context.functions.length; i++) {
-		printf("\t(func %s (export \"%s\") ",
-			context.functions.contents[i].name,
-			context.functions.contents[i].name);
+		printf("\t(func $%s (export \"%s\") ",
+			context.functions.contents[i].name + 1,
+			context.functions.contents[i].name + 1);
 		switch (context.functions.contents[i].return_type) {
 		case T_CHAR:
 		case T_BYTE:
