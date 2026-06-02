@@ -1,0 +1,29 @@
+QLANK
+
+A simple language which should compile to WASM.
+
+The compiler is ran with:
+
+	qlankc < input.qlank > output.wat
+
+
+<program>	::=	{function}
+<function>	::=	<func iden> <func header> "DO" {statement} "DONE"
+<func iden>	::=	"@".*($41-$5A | "_")
+<func header>	::=	<return type>
+<return type>	::=	"OUTPUTS" <type>
+<statement>	::=	<return>
+<return>	::=	"RET" <expression>
+<expression>	::=	<num const>
+<num const>	::=	*("-" | "U").($30-$39).*($41-$46)
+
+QLANK is mostly case insensitive, such that (unless otherwise notated) all
+values are uppercase.
+
+Example:
+
+	@MAIN
+	OUTPUTS	WORD
+	DO
+		RET U2A
+	DONE
