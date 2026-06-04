@@ -34,6 +34,7 @@ if [[ "$TEST" = true ]]; then
 			build/qlank < test.qlank
 	else
 		build/qlank < test.qlank > build/test.wat
+		cat build/test.wat
 		wat2wasm build/test.wat -o test-env/main.wasm
 	fi
 fi

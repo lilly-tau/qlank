@@ -15,7 +15,8 @@ main(void)
 {
 	struct lexer lexer;
 	struct context context = {0};
-	size_t i;
+	struct function *func;
+	size_t i, j;
 
 	create_lexer(&lexer);
 
@@ -29,17 +30,53 @@ main(void)
 
 	printf("(module\n");
 	for (i = 0; i < context.functions.length; i++) {
-		printf("\t(func $%s (export \"%s\") ",
-			context.functions.contents[i].name + 1,
-			context.functions.contents[i].name + 1);
-		switch (context.functions.contents[i].return_type) {
-		case T_CHAR:
-		case T_BYTE:
-		case T_INT:
-		case T_WORD:
-			printf("(result i32)\n");
+		func = context.functions.contents + i;
+		if (strlen(func->body)) {
+			printf("\t(func $%s (export \"%s\") ", func->name + 1,
+				func->name + 1);
+			for (j = 0; j < func->pcount; j++) {
+				printf("(param %s ", func->pnames[j]);
+				switch (func->ptypes[j]) {
+				case T_CHAR:
+				case T_BYTE:
+				case T_INT:
+				case T_WORD:
+					printf("i32) ");
+				}
+			}
+
+			switch (func->return_type) {
+			case T_CHAR:
+			case T_BYTE:
+			case T_INT:
+			case T_WORD:
+				printf("(result i32)\n");
+			}
+			printf("%s\t)\n", func->body);
+		} else {
+			printf("\t(import \"js\" \"%s\" (func $%s ",
+				func->name + 1, func->name + 1);
+			for (j = 0; j < func->pcount; j++) {
+				printf("(param %s ", func->pnames[j]);
+				switch (func->ptypes[j]) {
+				case T_CHAR:
+				case T_BYTE:
+				case T_INT:
+				case T_WORD:
+					printf("i32) ");
+					break;
+				}
+			}
+			switch (func->return_type) {
+			case T_CHAR:
+			case T_BYTE:
+			case T_INT:
+			case T_WORD:
+				printf("(result i32)");
+				break;
+			}
+			printf("))\n");
 		}
-		printf("%s\t)\n", context.functions.contents[i].body);
 	}
 	printf(")\n");
 

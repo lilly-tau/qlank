@@ -43,7 +43,7 @@ next_token(struct lexer *ret)
 	ret->length = 0;
 
 	do {
-		ret->token[ret->length] = c;
+		ret->token[ret->length] = isalpha(c) ? tolower(c) : c;
 		ret->length += 1;
 		if (ret->length >= ret->capacity) {
 			ret->capacity += 0x200;
@@ -65,6 +65,21 @@ is_identifier(const char *string)
 	size_t i;
 
 	if (string[0] != '@')
+		return FALSE;
+
+	for(i = 1; string[i]; i++)
+		if (!isalpha(string[i]) && string[i] != '_')
+			return FALSE;
+
+	return TRUE;
+}
+
+BOOLEAN
+is_variable(const char *string)
+{
+	size_t i;
+
+	if (string[0] != '$')
 		return FALSE;
 
 	for(i = 1; string[i]; i++)
@@ -115,7 +130,7 @@ as_number(const char *string, BOOLEAN *risword, BOOLEAN *rnegative)
 		case '-':
 			negative = TRUE;
 			break;
-		case 'U':
+		case 'u':
 			isword = TRUE;
 			break;
 		}
@@ -136,6 +151,18 @@ as_number(const char *string, BOOLEAN *risword, BOOLEAN *rnegative)
 		*rnegative = negative;
 
 	return ret;
+}
+
+BOOLEAN
+is_type(const char *string) {
+	TYPE type;
+
+	for (type = TYPE__NULL + 1; type < TYPE__MAX; type++) {
+		if (is_keyword(string, TYPE_STRINGS[type]))
+			return TRUE;
+	}
+
+	return FALSE;
 }
 
 TYPE

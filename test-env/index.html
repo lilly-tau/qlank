@@ -1,7 +1,13 @@
 <!DOCTYPE html>
 <html>
 	<script>
-		const importObject = { };
+		const importObject = {
+			"js": {
+				"putc": (c) => {
+					console.log(String.fromCharCode(c));
+				}
+			}
+		};
 		WebAssembly.instantiateStreaming(fetch("main.wasm"),
 		importObject).then((results) => {
 			alert(results.instance.exports.main());

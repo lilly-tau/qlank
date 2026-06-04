@@ -18,14 +18,21 @@ struct expr {
 };
 
 struct function {
-	TYPE return_type;
 	const char *name, *body;
+	const char **pnames;
+	const TYPE *ptypes;
+	size_t pcount;
+	TYPE return_type;
 };
 
 struct functions {
 	struct function *contents;
-	char *strings;
-	size_t capacity, length, strings_capacity, strings_length;
+	unsigned char *data;
+	char *body;
+	char **pnames;
+	TYPE *ptypes;
+	size_t capacity, length, data_capacity, data_length,
+		pcapacity, plength, body_length, body_capacity;
 };
 
 struct context {
@@ -40,17 +47,29 @@ create_functions(struct functions *ret);
 void
 destroy_functions(struct functions *ret);
 
+void *
+add_function_data(struct functions *ret, const void *data, size_t length);
+
 void
-add_function(struct functions *ret, const char *name, const char *body,
-TYPE return_type);
+add_function(struct functions *ret, const char *name);
+
+void
+set_function_type(struct functions *ret, TYPE type);
+
+void
+append_body(struct functions *ret, const char *body);
+
+void
+add_parameter(struct functions *ret, const char *name, TYPE type);
+
+void
+finalise_function(struct functions *ret);
 
 BOOLEAN
-compile_expression(struct strbuilder *ret, TYPE return_type,
-struct context *ctx);
+compile_expression(struct context *ctx, TYPE return_type, BOOLEAN drop);
 
 BOOLEAN
-compile_statement(struct strbuilder *ret, TYPE return_type,
-struct context *ctx);
+compile_statement(struct context *ctx, TYPE return_type);
 
 BOOLEAN
 compile_function(struct context *context);
