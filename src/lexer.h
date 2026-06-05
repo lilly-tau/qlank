@@ -22,6 +22,9 @@ BOOLEAN
 is_identifier(const char *string);
 
 BOOLEAN
+is_constant(const char *string);
+
+BOOLEAN
 is_variable(const char *string);
 
 /* Keywords must be in full uppercase */

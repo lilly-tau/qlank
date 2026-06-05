@@ -43,6 +43,17 @@ next_token(struct lexer *ret)
 	ret->length = 0;
 
 	do {
+		if (c == ';') {
+			while (c != EOF && c != '\n')
+				c = getchar();
+			ret->line += 1;
+			if (ret->length != 0)
+				break;
+
+			while (isspace(c = getchar()))
+				if (c == '\n')
+					ret->line += 1;
+		}
 		ret->token[ret->length] = isalpha(c) ? tolower(c) : c;
 		ret->length += 1;
 		if (ret->length >= ret->capacity) {
@@ -69,6 +80,22 @@ is_identifier(const char *string)
 
 	for(i = 1; string[i]; i++)
 		if (!isalpha(string[i]) && string[i] != '_')
+			return FALSE;
+
+	return TRUE;
+}
+
+BOOLEAN
+is_constant(const char *string)
+{
+	size_t i;
+
+	if (string[0] != '%')
+		return FALSE;
+
+	for(i = 1; string[i]; i++)
+		if (!isalpha(string[i]) && string[i] != '_'
+		&& string[i] != '.')
 			return FALSE;
 
 	return TRUE;
@@ -138,7 +165,7 @@ as_number(const char *string, BOOLEAN *risword, BOOLEAN *rnegative)
 
 	for (ret = 0; *string; ++string) {
 		ret <<= 4;
-		ret |= tolower(*string) - 0x30 - 0x7 * (*string > '9');
+		ret |= (tolower(*string) - 0x30 - 0x7 * (*string > '9')) & 0xF;
 	}
 
 	if (negative)
@@ -168,19 +195,14 @@ is_type(const char *string) {
 TYPE
 expect_type(BOOLEAN current_token, struct lexer *lexer)
 {
+	TYPE type;
+
 	if (!current_token)
 		next_token(lexer);
 
-	if (is_keyword(lexer->token, "CHAR"))
-		return T_CHAR;
-	if (is_keyword(lexer->token, "BYTE"))
-		return T_BYTE;
-	if (is_keyword(lexer->token, "INT"))
-		return T_INT;
-	if (is_keyword(lexer->token, "WORD"))
-		return T_WORD;
-	if (is_keyword(lexer->token, "VOID"))
-		return T_VOID;
+	for (type = TYPE__NULL + 1; type < TYPE__MAX; type++)
+		if (is_keyword(lexer->token, TYPE_STRINGS[type]))
+			return type;
 
 	p_assert(FALSE, "Expected type, got %s on line %u.", lexer->token,
 		lexer->line);

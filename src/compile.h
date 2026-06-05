@@ -40,12 +40,29 @@ struct functions {
 		body_capacity, vcapacity, vlength, dlength, dcapacity;
 };
 
+struct constant {
+	char *name;
+	TYPE type;
+	NUMCONST value;
+};
+
 struct context {
 	struct functions functions;
+	struct constant *constants;
 	struct lexer *lexer;
-	size_t loop_count;
+	size_t loop_count, const_length, const_capacity;
 	BOOLEAN in_function;
 };
+
+void
+create_context(struct context *ctx, struct lexer *lexer);
+
+void
+destroy_context(struct context *ctx);
+
+void
+create_constant(struct context *ctx, const char *name, TYPE type,
+NUMCONST value);
 
 void
 create_functions(struct functions *ret);
@@ -69,10 +86,19 @@ void
 add_parameter(struct functions *ret, const char *name, TYPE type);
 
 void
+add_constant(struct functions *ret, const char *name);
+
+void
+constant_type(struct functions *ret, TYPE type);
+
+void
+constant_value(struct functions *ret, NUMCONST value);
+
+void
 finalise_function(struct functions *ret);
 
-BOOLEAN
-compile_expression(struct context *ctx, TYPE return_type, BOOLEAN drop);
+TYPE
+compile_expression(struct context *ctx, BOOLEAN drop);
 
 BOOLEAN
 compile_statement(struct context *ctx, TYPE return_type);
