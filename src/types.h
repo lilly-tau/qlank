@@ -32,7 +32,7 @@ type_associable(TYPE a, TYPE b);
 BOOLEAN
 type_associable(TYPE a, TYPE b)
 {
-	if (a == b)
+	if (a == b || b == TYPE__MAX)
 		return TRUE;
 
 	if (a == T_VOID || b == T_VOID)

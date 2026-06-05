@@ -31,7 +31,9 @@ if [[ "$TEST" = true ]]; then
 		gdb -ex "set args < test.qlank" build/qlank
 	elif [[ "$DEBUG" = valgrind ]]; then
 		valgrind --leak-check=full --tool=memcheck -s\
-			build/qlank < test.qlank
+			build/qlank < test.qlank > build/test.wat
+		cat build/test.wat
+		wat2wasm build/test.wat -o test-env/main.wasm
 	else
 		build/qlank < test.qlank > build/test.wat
 		cat build/test.wat

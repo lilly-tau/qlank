@@ -14,14 +14,22 @@ create_functions(struct functions *ret)
 	ret->capacity = 0x10;
 	ret->length = 0x00;
 
-	ret->data = malloc(0x200);
-	ret->data_capacity = 0x200;
-	ret->data_length = 0x00;
+	ret->data = malloc(0x08 * sizeof(*ret->data));
+	ret->data[0].memory = malloc(0x100000);
+	ret->data[0].capacity = 0x100000;
+	ret->data[0].length = 0x00;
+	ret->dcapacity = 0x08;
+	ret->dlength = 0x01;
 
 	ret->pnames = malloc(0x10 * sizeof(*ret->pnames));
 	ret->ptypes = malloc(0x10 * sizeof(*ret->ptypes));
 	ret->pcapacity = 0x10;
 	ret->plength = 0x00;
+
+	ret->vnames = malloc(0x10 * sizeof(*ret->vnames));
+	ret->vtypes = malloc(0x10 * sizeof(*ret->vtypes));
+	ret->vcapacity = 0x10;
+	ret->vlength = 0x00;
 
 	ret->body = malloc(0x200);
 	ret->body[0] = '\0';
@@ -32,25 +40,42 @@ create_functions(struct functions *ret)
 void
 destroy_functions(struct functions *ret)
 {
+	size_t i;
+
+	for (i = 0 ; i < ret->dlength; i++)
+		free(ret->data[i].memory);
+
+	free(ret->data);
 	free(ret->body);
 	free(ret->pnames);
 	free(ret->ptypes);
-	free(ret->data);
+	free(ret->vnames);
+	free(ret->vtypes);
 	free(ret->contents);
 }
 
 void *
 add_function_data(struct functions *ret, const void *data, size_t length)
 {
-	ret->data_length += length;
-	if (ret->data_capacity < ret->data_length) {
-		ret->data_capacity =
-			(1 + ret->data_length / 0x200) * 0x200;
-		ret->data = realloc(ret->data, ret->data_capacity);
+	struct block *block;
+
+	block = ret->data + ret->dlength - 1;
+	if (block->length + length < block->capacity) {
+		ret->dlength += 1;
+		if (ret->dlength > ret->dcapacity) {
+			ret->dcapacity += 0x08;
+			ret->data = realloc(ret->data,
+				sizeof(*ret->data) * ret->dcapacity);
+		}
+		block = ret->data + ret->dlength - 1;
+		block->length = 0;
+		block->capacity = 0x100000 > length ? 0x100000 : length;
+		block->memory = malloc(block->capacity);
 	}
 
-	memcpy(ret->data + ret->data_length - length, data, length);
-	return ret->data + ret->data_length - length;
+	block->length += length;
+	memcpy(block->memory + block->length - length, data, length);
+	return block->memory + block->length - length;
 }
 
 void
@@ -67,6 +92,7 @@ add_function(struct functions *ret, const char *name)
 	}
 
 	ret->plength = 0;
+	ret->vlength = 0;
 	ret->body[0] = '\0';
 	ret->body_length = 1;
 	ret->contents[ret->length - 1].return_type = T_VOID;
@@ -111,15 +137,36 @@ add_parameter(struct functions *ret, const char *name, TYPE type)
 }
 
 void
+add_variable(struct functions *ret, const char *name, TYPE type)
+{
+	ret->vlength += 1;
+	if (ret->vlength > ret->vcapacity) {
+		ret->vcapacity = (1 + ret->vlength / 0x04) * 0x04;
+		ret->vnames = realloc(ret->vnames,
+			ret->vcapacity * sizeof(*ret->vnames));
+		ret->vtypes = realloc(ret->vtypes,
+			ret->vcapacity * sizeof(*ret->vtypes));
+	}
+	ret->vnames[ret->vlength - 1] = add_function_data(ret, name,
+		strlen(name) + 1);
+	ret->vtypes[ret->vlength - 1] = type;
+}
+
+void
 finalise_function(struct functions *ret)
 {
 	ret->contents[ret->length - 1].pnames = add_function_data(ret,
 		ret->pnames, ret->plength * sizeof(*ret->pnames));
 	ret->contents[ret->length - 1].ptypes = add_function_data(ret,
 		ret->ptypes, ret->plength * sizeof(*ret->ptypes));
+	ret->contents[ret->length - 1].vnames = add_function_data(ret,
+		ret->vnames, ret->vlength * sizeof(*ret->vnames));
+	ret->contents[ret->length - 1].vtypes = add_function_data(ret,
+		ret->vtypes, ret->vlength * sizeof(*ret->vtypes));
 	ret->contents[ret->length - 1].body = add_function_data(ret, ret->body,
 		strlen(ret->body) + 1);
 	ret->contents[ret->length - 1].pcount = ret->plength;
+	ret->contents[ret->length - 1].vcount = ret->vlength;
 }
 
 BOOLEAN
@@ -132,14 +179,34 @@ compile_expression(struct context *ctx, TYPE return_type, BOOLEAN drop)
 	
 	size_t i, j;
 
-	if (is_number(ctx->lexer->token)) {
+	if (!strcmp(ctx->lexer->token, "(")) {
+		next_token(ctx->lexer);
+		p_assert(compile_expression(ctx, return_type, drop),
+			"Expected expression in parenthesis on line %u.\n",
+			ctx->lexer->line);
+		next_token(ctx->lexer);
+		p_assert(!strcmp(ctx->lexer->token, ")"), "Expected closing"
+			" parenthesis on line %u.\n", ctx->lexer->line);
+		expr_type = return_type;
+	} else if (!strcmp(ctx->lexer->token, "+")) {
+		next_token(ctx->lexer);
+		p_assert(compile_expression(ctx, return_type, drop),
+			"Expected expression in addition on line %u.\n",
+			ctx->lexer->line);
+		next_token(ctx->lexer);
+		p_assert(compile_expression(ctx, return_type, drop),
+			"Expected expression in addition on line %u.\n",
+			ctx->lexer->line);
+		append_body(&ctx->functions, "\t\t(i32.add)\n");
+		expr_type = return_type;
+	} else if (is_number(ctx->lexer->token)) {
 		constant = as_number(ctx->lexer->token, &isword, &negative);
 	
 		if (constant < 0x100 && isword)
 			expr_type = T_BYTE;
 		else if (constant < 0x100)
 			expr_type = T_CHAR;
-		else if (constant < 0x80000000 && isword)
+		else if (isword)
 			expr_type = T_WORD;
 		else if (constant < 0x80000000)
 			expr_type = T_INT;
@@ -167,8 +234,11 @@ compile_expression(struct context *ctx, TYPE return_type, BOOLEAN drop)
 		for (j = 0; j < ctx->functions.contents[i].pcount; j++) {
 			next_token(ctx->lexer);
 			p_assert(compile_expression(ctx, return_type, FALSE),
-				"Expected parameter for function %s on line"
-				" %u.\n", ctx->lexer->token, ctx->lexer->line);
+				"Expected parameter %s for function %s on"
+				" line %u.\n",
+				ctx->functions.contents[i].pnames[j],
+				ctx->functions.contents[i].name,
+				ctx->lexer->line);
 		}
 
 		expr_type = ctx->functions.contents[i].return_type;
@@ -177,7 +247,7 @@ compile_expression(struct context *ctx, TYPE return_type, BOOLEAN drop)
 			ctx->functions.contents[i].name + 1);
 		append_body(&ctx->functions, ")\n");
 
-		if (drop)
+		if (drop && expr_type != T_VOID)
 			append_body(&ctx->functions, "\t\t(drop)\n");
 
 	} else if (is_variable(ctx->lexer->token)) {
@@ -186,15 +256,24 @@ compile_expression(struct context *ctx, TYPE return_type, BOOLEAN drop)
 			ctx->functions.pnames[i]))
 				break;
 		}
-		p_assert(i != ctx->functions.plength, "Local variable %s does"
-			" not exist on line %u.\n", ctx->lexer->token,
-			ctx->lexer->line);
+		if (i == ctx->functions.plength) {
+			for (i = 0; i < ctx->functions.vlength; i++) {
+				if (!strcmp(ctx->lexer->token,
+				ctx->functions.vnames[i]))
+					break;
+			}
+			p_assert(i != ctx->functions.vlength, "Local variable"
+				" %s does not exist on line %u.\n",
+				ctx->lexer->token, ctx->lexer->line);
+			expr_type = ctx->functions.vtypes[i];
+		} else
+			expr_type = ctx->functions.ptypes[i];
+
 		if (!drop) {
 			append_body(&ctx->functions, "\t\t(local.get ");
 			append_body(&ctx->functions, ctx->lexer->token);
 			append_body(&ctx->functions, ")\n");
 		}
-		expr_type = ctx->functions.ptypes[i];
 	} else
 		return FALSE;
 
@@ -208,7 +287,11 @@ compile_expression(struct context *ctx, TYPE return_type, BOOLEAN drop)
 BOOLEAN 
 compile_statement(struct context *ctx, TYPE return_type)
 {
-	size_t count;
+	size_t i, original_line, ident;
+	const char *name;
+	TYPE type;
+	BOOLEAN status;
+	char number[9] = {0};
 
 	if (is_keyword(ctx->lexer->token, "RET")) {
 		p_assert(return_type != TYPE__NULL, "Unexpected return"
@@ -221,8 +304,108 @@ compile_statement(struct context *ctx, TYPE return_type)
 				ctx->lexer->line);
 		}
 		append_body(&ctx->functions, "\t\t(return)\n");
+	} else if (is_keyword(ctx->lexer->token, "SET")) {
+		next_token(ctx->lexer);
+		p_assert(is_variable(ctx->lexer->token), "Expected variable "
+			"to be set on line %u.\n");
+
+		for (i = 0; i < ctx->functions.plength; i++) {
+			if (!strcmp(ctx->lexer->token,
+			ctx->functions.pnames[i])) {
+				name = ctx->functions.pnames[i];
+				type = ctx->functions.ptypes[i];
+				break;
+			}
+		}
+		if (i == ctx->functions.plength) {
+			for (i = 0; i < ctx->functions.vlength; i++)
+				if (!strcmp(ctx->lexer->token,
+				ctx->functions.vnames[i])) {
+					name = ctx->functions.vnames[i];
+					type = ctx->functions.vtypes[i];
+					break;
+				}
+			p_assert(i != ctx->functions.vlength, "Variable "
+				"%s does not exist on line %u.\n",
+				ctx->lexer->token);
+			
+		}
+
+		next_token(ctx->lexer);
+		p_assert(compile_expression(ctx, type, FALSE),
+			"Invalid expression on line %u.\n",
+			ctx->lexer->line);
+
+		append_body(&ctx->functions, "\t\t(local.set ");
+		append_body(&ctx->functions, name);
+		append_body(&ctx->functions, ")\n");
+	} else if (is_keyword(ctx->lexer->token, "IF")) {
+		next_token(ctx->lexer);
+
+		p_assert(compile_expression(ctx, T_WORD, FALSE), "If expects"
+			" expression on line %u.\n", ctx->lexer->line);
+
+		next_token(ctx->lexer);
+		p_assert(is_keyword(ctx->lexer->token, "DO"), "If expects to"
+			" be followed by block on line %u.\n",
+			ctx->lexer->line);
+
+		append_body(&ctx->functions, "\t(if (then\n");
+
+		original_line = ctx->lexer->line;
+		while ((status = next_token(ctx->lexer))
+		&& !is_keyword(ctx->lexer->token, "DONE")) {
+			p_assert(compile_statement(ctx,
+				ctx->functions.contents[ctx->functions.length
+				- 1].return_type), "Expected statement"
+				" on line %u.\n", ctx->lexer->line);
+		}
+		p_assert(status, "Unclosed block on line %u.\n",
+			original_line);
+
+		append_body(&ctx->functions, "\t))\n");
+	} else if (is_keyword(ctx->lexer->token, "WHILE")) {
+		next_token(ctx->lexer);
+
+		ident = ctx->loop_count++;
+		append_body(&ctx->functions, "\t(block $loop_end");
+		sprintf(number, "%08.08X", ident);
+		append_body(&ctx->functions, number);
+		append_body(&ctx->functions, "\n\t(loop $loop");
+		append_body(&ctx->functions, number);
+		append_body(&ctx->functions, "\n");
+
+		p_assert(compile_expression(ctx, T_WORD, FALSE), "While"
+			" expects expression on line %u.\n", ctx->lexer->line);
+
+		append_body(&ctx->functions, "\t\t(if (then br $loop_end");
+		sprintf(number, "%08.08X", ident);
+		append_body(&ctx->functions, number);
+		append_body(&ctx->functions, "))\n");
+
+		next_token(ctx->lexer);
+		p_assert(is_keyword(ctx->lexer->token, "DO"), "While expects"
+			" to be followed by block on line %u.\n",
+			ctx->lexer->line);
+
+
+		original_line = ctx->lexer->line;
+		while ((status = next_token(ctx->lexer))
+		&& !is_keyword(ctx->lexer->token, "DONE")) {
+			p_assert(compile_statement(ctx,
+				ctx->functions.contents[ctx->functions.length
+				- 1].return_type), "Expected statement"
+				" on line %u.\n", ctx->lexer->line);
+		}
+		p_assert(status, "Unclosed block on line %u.\n",
+			original_line);
+
+		append_body(&ctx->functions, "\t\t(br $loop");
+		sprintf(number, "%08.08X", ident);
+		append_body(&ctx->functions, number);
+		append_body(&ctx->functions, ")\n\t))\n");
 	} else {
-		p_assert(compile_expression(ctx, return_type, TRUE),
+		p_assert(compile_expression(ctx, TYPE__MAX, TRUE),
 			"Expected statement or expression, got %s on"
 			" line %u.", ctx->lexer->token, ctx->lexer->line);
 	}
@@ -235,7 +418,7 @@ compile_function(struct context *ctx)
 {
 	struct strbuilder body;
 	BOOLEAN found_type, hold_token = FALSE;
-	TYPE ptype;
+	TYPE type;
 	size_t pcount = 0, i;
 	char *name;
 
@@ -260,8 +443,8 @@ compile_function(struct context *ctx)
 		} else if (is_keyword(ctx->lexer->token, "WITH")) {
 			next_token(ctx->lexer);
 			for (i = 0; is_type(ctx->lexer->token); i++) {
-				ptype = expect_type(TRUE, ctx->lexer);
-				p_assert(ptype != T_VOID, "Function %s has"
+				type = expect_type(TRUE, ctx->lexer);
+				p_assert(type != T_VOID, "Function %s has"
 					" VOID parameter on line %u.\n", name,
 					ctx->lexer->line);
 
@@ -272,7 +455,27 @@ compile_function(struct context *ctx)
 					name, ctx->lexer->token,
 					ctx->lexer->line);
 				add_parameter(&ctx->functions,
-					ctx->lexer->token, ptype);
+					ctx->lexer->token, type);
+
+				next_token(ctx->lexer);
+			}
+			hold_token = TRUE;
+		} else if (is_keyword(ctx->lexer->token, "USING")) {
+			next_token(ctx->lexer);
+			for (i = 0; is_type(ctx->lexer->token); i++) {
+				type = expect_type(TRUE, ctx->lexer);
+				p_assert(type != T_VOID, "Function %s has"
+					" VOID parameter on line %u.\n", name,
+					ctx->lexer->line);
+
+				next_token(ctx->lexer);
+				p_assert(is_variable(ctx->lexer->token),
+					"Function %s has non variable"
+					" parameter %s on line %u.\n",
+					name, ctx->lexer->token,
+					ctx->lexer->line);
+				add_variable(&ctx->functions,
+					ctx->lexer->token, type);
 
 				next_token(ctx->lexer);
 			}
@@ -295,6 +498,9 @@ compile_function(struct context *ctx)
 				ctx->lexer->line);
 		}
 	}
+	p_assert(!(ctx->functions.vlength > 0 && !*ctx->functions.body),
+		"Function prototype %s has local variables on line %u.\n",
+		name);
 	finalise_function(&ctx->functions);
 
 

@@ -50,9 +50,20 @@ main(void)
 			case T_BYTE:
 			case T_INT:
 			case T_WORD:
-				printf("(result i32)\n");
+				printf("(result i32) ");
 			}
-			printf("%s\t)\n", func->body);
+
+			for (j = 0; j < func->vcount; j++) {
+				printf("(local %s ", func->vnames[j]);
+				switch (func->vtypes[j]) {
+				case T_CHAR:
+				case T_BYTE:
+				case T_INT:
+				case T_WORD:
+					printf("i32) ");
+				}
+			}
+			printf("\n%s\t)\n", func->body);
 		} else {
 			printf("\t(import \"js\" \"%s\" (func $%s ",
 				func->name + 1, func->name + 1);

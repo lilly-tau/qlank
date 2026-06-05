@@ -19,25 +19,31 @@ struct expr {
 
 struct function {
 	const char *name, *body;
-	const char **pnames;
-	const TYPE *ptypes;
-	size_t pcount;
+	const char **pnames, **vnames;
+	const TYPE *ptypes, *vtypes;
+	size_t pcount, vcount;
 	TYPE return_type;
+};
+
+struct block {
+	unsigned char *memory;
+	size_t length, capacity;
 };
 
 struct functions {
 	struct function *contents;
-	unsigned char *data;
+	struct block *data;
 	char *body;
-	char **pnames;
-	TYPE *ptypes;
-	size_t capacity, length, data_capacity, data_length,
-		pcapacity, plength, body_length, body_capacity;
+	char **pnames, **vnames;
+	TYPE *ptypes, *vtypes;
+	size_t capacity, length, pcapacity, plength, body_length,
+		body_capacity, vcapacity, vlength, dlength, dcapacity;
 };
 
 struct context {
 	struct functions functions;
 	struct lexer *lexer;
+	size_t loop_count;
 	BOOLEAN in_function;
 };
 
