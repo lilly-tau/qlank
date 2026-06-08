@@ -301,7 +301,7 @@ constexpr(struct context *ctx, TYPE *return_type)
 	return ret;
 }
 
-#define BINOP_STRING "+-*/&|"
+#define BINOP_STRING "+-*/&|<>="
 NUMCONST
 constexpr_binop(struct context *ctx, TYPE *return_type)
 {
@@ -359,6 +359,45 @@ constexpr_binop(struct context *ctx, TYPE *return_type)
 		break;
 	case '|':
 		ret |= constexpr(ctx, &type);
+		break;
+	case '=':
+		ret = ret == constexpr(ctx, &type);
+		break;
+	case '<':
+		switch (type) {
+		case T_CHAR:
+		case T_INT:
+			/* evil ass conversions */
+			integer = *(SNUMCONST*)&ret;
+			ret = constexpr(ctx, &type);
+			integer = integer < *(SNUMCONST*)&ret;
+			ret = *(NUMCONST*)&integer;
+			break;
+		case T_BYTE:
+		case T_WORD:
+		case T_PTR:
+		case T_OFFSET:
+			ret = ret < constexpr(ctx, &type);
+			break;
+		}
+		break;
+	case '>':
+		switch (type) {
+		case T_CHAR:
+		case T_INT:
+			/* evil ass conversions */
+			integer = *(SNUMCONST*)&ret;
+			ret = constexpr(ctx, &type);
+			integer = integer > *(SNUMCONST*)&ret;
+			ret = *(NUMCONST*)&integer;
+			break;
+		case T_BYTE:
+		case T_WORD:
+		case T_PTR:
+		case T_OFFSET:
+			ret = ret > constexpr(ctx, &type);
+			break;
+		}
 		break;
 	}
 
@@ -434,6 +473,37 @@ compile_binop(struct context *ctx, BOOLEAN drop)
 		break;
 	case '|':
 		append_body(&ctx->functions, "\t\t(i32.or)\n");
+		break;
+	case '<':
+		switch (at) {
+		case T_CHAR:
+		case T_INT:
+			append_body(&ctx->functions, "\t\t(i32.lt_s)\n");
+			break;
+		case T_BYTE:
+		case T_WORD:
+		case T_PTR:
+		case T_OFFSET:
+			append_body(&ctx->functions, "\t\t(i32.lt_u)\n");
+			break;
+		}
+		break;
+	case '>':
+		switch (at) {
+		case T_CHAR:
+		case T_INT:
+			append_body(&ctx->functions, "\t\t(i32.gt_s)\n");
+			break;
+		case T_BYTE:
+		case T_WORD:
+		case T_PTR:
+		case T_OFFSET:
+			append_body(&ctx->functions, "\t\t(i32.gt_u)\n");
+			break;
+		}
+		break;
+	case '=':
+		append_body(&ctx->functions, "\t\t(i32.eq)\n");
 		break;
 	}
 
