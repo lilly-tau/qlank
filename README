@@ -7,28 +7,38 @@ The compiler is ran with:
 	qlankc < input.qlank > output.wat
 
 
-<program>	::=	{function}
-<function>	::=	<func iden> <func header> "DO" {statement} "DONE"
 <func iden>	::=	"@".*($41-$5A | "_")
-<func header>	::=	<return type>
-<return type>	::=	"OUTPUTS" <type>
-<statement>	::=	<return>
-<return>	::=	"RET" <expression>
-<expression>	::=	<num const>
+<var iden>	::=	"$".*($41-$5A | "_")
+<const iden>	::=	"$".*($41-$5A | "_" | ".")
 <num const>	::=	*("-" | "U").($30-$39).*($41-$46)
+
+<type>		::=	"BYTE" | "CHAR" | "WORD" | "INT" | "PTR" | "OFFSET"
+		|	"VOID"
+
+<program>	::=	{function | constant}
+<function>	::=	<func iden> {func header} "DO" {statement} "DONE"
+<constant>	::=	<const iden> <type> <constexpr>
+		|	<const iden> "WITH" {<type> <var iden>} "DONE"
+
+<func header>	::=	<return type | parameters | locals>
+<return type>	::=	"OUTPUTS" <type>
+<parameters>	::=	"WITH" {<type> <var iden>}
+<locals>	::=	"USING" {<type> <var iden>}
+
+<statement>	::=	<set | store | if | while | return | expression>
+<set>		::=	"SET" <var iden> <expression>
+<store>		::=	"STORE" <expression> <type> <expression>
+<if>		::=	"IF" <expression> "DO" {statement} "DONE"
+<while>		::=	"WHILE" <expression> "DO" {statement} "DONE"
+<return>	::=	"RET" <expression>
+
+<expression>	::=	<num const> | <var iden> | <const iden> <expression>
+		|	"+" <expression> <expression> | "(" <expression>
+		|	<type> "OF" <expression>
+			["AS" <type>] ")" | "CONSTEXPR" <constexpr>
+<constexpr>	::=	<num const> | <const iden>
+		|	"+" <constexpr> <constexpr>
+		|	"(" <constexpr> ["AS" <type>] ")"
 
 QLANK is mostly case insensitive, such that (unless otherwise notated) all
 values are uppercase.
-
-Example:
-
-	@FUNC
-	OUTPUTS	WORD
-		RET U2A
-	DONE
-
-	@MAIN
-	OUTPUTS	WORD
-	DO
-		RET @FUNC
-	DONE

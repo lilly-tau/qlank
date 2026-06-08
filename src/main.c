@@ -38,13 +38,15 @@ print_function(struct function *func)
 		printf("\t(func $%s (export \"%s\")", func->name + 1,
 			func->name + 1);
 	else
-		printf("\t(import \"js\" \"%s\" (func $%s", func->name + 1);
+		printf("\t(import \"js\" \"%s\" (func $%s", func->name + 1,
+			func->name + 1);
 
 	for (i = 0; i < func->pcount; i++)
 		printf(" (param %s %s)", func->pnames[i],
 			convert_type(func->ptypes[i]));
 
-	printf(" (result %s)", convert_type(func->return_type));
+	if (func->return_type != T_VOID)
+		printf(" (result %s)", convert_type(func->return_type));
 
 	for (i = 0; i < func->vcount; i++)
 		printf(" (local %s %s)", func->vnames[i],
@@ -79,9 +81,14 @@ main(void)
 		}
 	}
 
-	printf("(module\n\t(memory 1)\n");
+	printf("(module\n");
 	for (i = 0; i < context.functions.length; i++)
-		print_function(context.functions.contents + i);
+		if (!context.functions.contents[i].body[0])
+			print_function(context.functions.contents + i);
+	printf("\t(memory 1)\n");
+	for (i = 0; i < context.functions.length; i++)
+		if (context.functions.contents[i].body[0])
+			print_function(context.functions.contents + i);
 	printf(")\n");
 
 	destroy_functions(&context.functions);

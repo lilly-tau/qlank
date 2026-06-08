@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include "lexer.h"
 #include "passert.h"
-#include "strbuilder.h"
 #include "types.h"
 
 typedef enum {

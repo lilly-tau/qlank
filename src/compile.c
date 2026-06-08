@@ -302,6 +302,76 @@ constexpr(struct context *ctx, TYPE *return_type)
 }
 
 TYPE
+compile_operation(struct context *ctx, BOOLEAN drop)
+{
+	union s_expr {
+		char *token;
+		char operand;
+	};
+}
+
+#define BINOP_STRING "+-*/&|"
+TYPE
+compile_binop(struct context *ctx, BOOLEAN drop)
+{
+	char oper;
+	TYPE at, bt;
+
+	if (strlen(ctx->lexer->token) != 1
+	|| !strchr(BINOP_STRING, ctx->lexer->token[0]))
+		return TYPE__NULL;
+
+	oper = ctx->lexer->token[0];
+
+	next_token(ctx->lexer);
+	p_assert(at = compile_expression(ctx, drop),
+		"Expected expression in binop %s on line %u.\n",
+		ctx->lexer->line);
+
+	next_token(ctx->lexer);
+	p_assert(bt = compile_expression(ctx, drop),
+		"Expected expression in binop on line %u.\n",
+		ctx->lexer->line);
+
+	p_assert(type_associable(bt, at), "Type %s not associable"
+		" to %s for binop on line %u.\n", TYPE_STRINGS[bt],
+		TYPE_STRINGS[at], ctx->lexer->line);
+
+	if (!drop) switch (oper) {
+	case '+':
+		append_body(&ctx->functions, "\t\t(i32.add)\n");
+		break;
+	case '-':
+		append_body(&ctx->functions, "\t\t(i32.sub)\n");
+		break;
+	case '*':
+		append_body(&ctx->functions, "\t\t(i32.mul)\n");
+		break;
+	case '/':
+		switch (at) {
+		case T_CHAR:
+		case T_INT:
+			append_body(&ctx->functions, "\t\t(i32.div_s)\n");
+			break;
+		case T_BYTE:
+		case T_WORD:
+		case T_PTR:
+		case T_OFFSET:
+			append_body(&ctx->functions, "\t\t(i32.div_u)\n");
+			break;
+		}
+		break;
+	case '&':
+		append_body(&ctx->functions, "\t\t(i32.and)\n");
+		break;
+	case '|':
+		append_body(&ctx->functions, "\t\t(i32.or)\n");
+		break;
+	}
+	return at;
+}
+
+TYPE
 compile_expression(struct context *ctx, BOOLEAN drop)
 {
 	NUMCONST constant;
@@ -326,19 +396,16 @@ compile_expression(struct context *ctx, BOOLEAN drop)
 		p_assert(!strcmp(ctx->lexer->token, ")"),
 			"Expected closing parenthesis on line %u.\n",
 			ctx->lexer->line);
-	} else if (!strcmp(ctx->lexer->token, "+")) {
+	} else if ((expr_type = compile_binop(ctx, drop)) != TYPE__NULL);
+	else if (!strcmp(ctx->lexer->token, "~")) {
 		next_token(ctx->lexer);
 		p_assert(at = compile_expression(ctx, drop),
-			"Expected expression in addition on line %u.\n",
+			"Expected expression in not on line %u.\n",
 			ctx->lexer->line);
-		next_token(ctx->lexer);
-		p_assert(bt = compile_expression(ctx, drop),
-			"Expected expression in addition on line %u.\n",
-			ctx->lexer->line);
-		p_assert(type_associable(bt, at), "Type %s not associable"
-			" to %s for addition on line %u.\n", TYPE_STRINGS[bt],
-			TYPE_STRINGS[at], ctx->lexer->line);
-		append_body(&ctx->functions, "\t\t(i32.add)\n");
+		if (!drop) {
+			append_body(&ctx->functions, "\t\t(i32.const -1)\n"
+				"\t\t(i32.xor)\n");
+		}
 		expr_type = at;
 	} else if (is_number(ctx->lexer->token)) {
 		constant = as_number(ctx->lexer->token, &isword, &negative);
@@ -444,7 +511,6 @@ compile_expression(struct context *ctx, BOOLEAN drop)
 			ctx->lexer->line);
 
 		constant = ctx->constants[i].value;
-		expr_type = ctx->constants[i].type;
 		if (!drop) {
 			append_body(&ctx->functions, "\t\t(i32.const 0x");
 			sprintf(number, "%08.08x", constant);
@@ -457,6 +523,8 @@ compile_expression(struct context *ctx, BOOLEAN drop)
 
 		if (!drop)
 			append_body(&ctx->functions, "\t\t(i32.add)\n");
+
+		expr_type = T_OFFSET;
 	} else if (at = expect_type(TRUE, ctx->lexer)) {
 		next_token(ctx->lexer);
 		if (!is_keyword(ctx->lexer->token, "OF"))
@@ -479,11 +547,18 @@ compile_expression(struct context *ctx, BOOLEAN drop)
 				break;
 			case T_INT:
 			case T_WORD:
+			case T_PTR:
+			case T_OFFSET:
 				append_body(&ctx->functions,
 					"\t\t(i32.load)\n");
 				break;
+			default:
+				p_assert(FALSE, "Invalid type %s in OF"
+					" expression on line %u.\n",
+					TYPE_STRINGS[at]);
 			}
 		}
+		expr_type = at;
 	} else
 		return TYPE__NULL;
 
@@ -567,11 +642,21 @@ compile_statement(struct context *ctx, TYPE return_type)
 			ctx->lexer->line);
 
 		next_token(ctx->lexer);
-		p_assert(type_associable(type2 = compile_expression(ctx,
-			FALSE), type),
-			"Store expects expression associable to %s"
-			" got type %s on line %u.\n", TYPE_STRINGS[type],
-			TYPE_STRINGS[type2], ctx->lexer->line);
+
+		if (!strcmp(ctx->lexer->token, "!")) {
+			next_token(ctx->lexer);
+			type2 = compile_expression(ctx, FALSE);
+			p_assert(type2 != T_VOID && type2 != TYPE__NULL
+				&& type2 < TYPE__MAX, "Invalid type in"
+				" immediate store on line %u.\n",
+				ctx->lexer->line);
+		} else
+			p_assert(type_associable(type2 =
+				compile_expression(ctx, FALSE), type),
+				"Store expects expression associable to %s"
+				" got type %s on line %u.\n",
+				TYPE_STRINGS[type], TYPE_STRINGS[type2],
+				ctx->lexer->line);
 
 		append_body(&ctx->functions, "\t\t(i32.store)\n");
 	} else if (is_keyword(ctx->lexer->token, "IF")) {
@@ -654,13 +739,13 @@ compile_statement(struct context *ctx, TYPE return_type)
 			" line %u.", ctx->lexer->token, ctx->lexer->line);
 	}
 
+
 	return TRUE;
 }
 
 BOOLEAN
 compile_function(struct context *ctx)
 {
-	struct strbuilder body;
 	BOOLEAN found_type, hold_token = FALSE;
 	TYPE type;
 	size_t pcount = 0, i;
@@ -678,7 +763,7 @@ compile_function(struct context *ctx)
 	while ((hold_token || next_token(ctx->lexer))
 	&& !is_keyword(ctx->lexer->token, "DONE")) {
 		hold_token = FALSE;
-		if (is_keyword(ctx->lexer->token, "OUTPUTS")) {
+		if (is_keyword(ctx->lexer->token, "OUTPUTS")) { 
 			p_assert(!found_type, "Function %s has multiple"
 				" types on line %u.\n", name, ctx->lexer->line);
 			set_function_type(&ctx->functions,
