@@ -301,20 +301,88 @@ constexpr(struct context *ctx, TYPE *return_type)
 	return ret;
 }
 
-TYPE
-compile_operation(struct context *ctx, BOOLEAN drop)
+#define BINOP_STRING "+-*/&|"
+NUMCONST
+constexpr_binop(struct context *ctx, TYPE *return_type)
 {
-	union s_expr {
-		char *token;
-		char operand;
-	};
+	NUMCONST ret;
+	SNUMCONST integer;
+	TYPE expr_type, type;
+	char oper;
+
+	if (strlen(ctx->lexer->token) != 1
+	|| !strchr(BINOP_STRING, ctx->lexer->token[0]))
+		return TYPE__NULL;
+
+	oper = ctx->lexer->token[0];
+
+	next_token(ctx->lexer);
+	if (return_type != NULL)
+		expr_type = *return_type;
+	else
+		expr_type = TYPE__NULL;
+
+	ret = constexpr(ctx, &expr_type);
+
+	next_token(ctx->lexer);
+	type = expr_type;
+	switch(oper) {
+	case '+':
+		ret += constexpr(ctx, &type);
+		break;
+	case '-':
+		ret -= constexpr(ctx, &type);
+		break;
+	case '*':
+		ret *= constexpr(ctx, &type);
+		break;
+	case '/':
+		switch (type) {
+		case T_CHAR:
+		case T_INT:
+			/* evil ass conversions */
+			integer = *(SNUMCONST*)&ret;
+			ret = constexpr(ctx, &type);
+			integer /= *(SNUMCONST*)&ret;
+			ret = *(NUMCONST*)&integer;
+			break;
+		case T_BYTE:
+		case T_WORD:
+		case T_PTR:
+		case T_OFFSET:
+			ret /= constexpr(ctx, &type);
+			break;
+		}
+		break;
+	case '&':
+		ret &= constexpr(ctx, &type);
+		break;
+	case '|':
+		ret |= constexpr(ctx, &type);
+		break;
+	}
+
+	if (return_type != NULL && *return_type != TYPE__NULL) {
+		p_assert(type_associable(type, expr_type), 
+			"Expected constexpr of type %s got %s in"
+			" addition on line %u.\n",
+			TYPE_STRINGS[expr_type], TYPE_STRINGS[type],
+			ctx->lexer->line);
+	}
+
+	ret &= (1 << (TYPE_SIZEOF[expr_type] * 8)) - 1;
+
+	if (return_type != NULL)
+		*return_type = expr_type;
+	
+	return ret;
 }
 
-#define BINOP_STRING "+-*/&|"
 TYPE
 compile_binop(struct context *ctx, BOOLEAN drop)
 {
 	char oper;
+	char number[9] = {0};
 	TYPE at, bt;
 
 	if (strlen(ctx->lexer->token) != 1
@@ -367,6 +435,15 @@ compile_binop(struct context *ctx, BOOLEAN drop)
 	case '|':
 		append_body(&ctx->functions, "\t\t(i32.or)\n");
 		break;
+	}
+
+	if (TYPE_SIZEOF[at] != 0x04) {
+		append_body(&ctx->functions, "\t\t(i32.const 0x");
+		sprintf(number, "%08.08x",
+			(1 << (TYPE_SIZEOF[at] * 8)) - 1);
+		append_body(&ctx->functions, number);
+		append_body(&ctx->functions, ")\n");
+		append_body(&ctx->functions, "\t\t(i32.and)\n");
 	}
 	return at;
 }
@@ -561,6 +638,15 @@ compile_expression(struct context *ctx, BOOLEAN drop)
 		expr_type = at;
 	} else
 		return TYPE__NULL;
+
+	if (!drop && TYPE_SIZEOF[expr_type] != 0x04) {
+		append_body(&ctx->functions, "\t\t(i32.const 0x");
+		sprintf(number, "%08.08x",
+			(1 << (TYPE_SIZEOF[expr_type] * 8)) - 1);
+		append_body(&ctx->functions, number);
+		append_body(&ctx->functions, ")\n");
+		append_body(&ctx->functions, "\t\t(i32.and)\n");
+	}
 
 	return expr_type;
 }

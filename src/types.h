@@ -6,6 +6,7 @@ typedef unsigned char BOOLEAN;
 #define FALSE 0x00
 
 typedef unsigned long NUMCONST;
+typedef signed long SNUMCONST;
 
 typedef enum {
 	TYPE__NULL,
