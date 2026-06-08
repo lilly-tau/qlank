@@ -85,7 +85,7 @@ main(void)
 	for (i = 0; i < context.functions.length; i++)
 		if (!context.functions.contents[i].body[0])
 			print_function(context.functions.contents + i);
-	printf("\t(memory 1)\n");
+	printf("\t(memory (export \"mem\") 1)\n");
 	for (i = 0; i < context.functions.length; i++)
 		if (context.functions.contents[i].body[0])
 			print_function(context.functions.contents + i);
